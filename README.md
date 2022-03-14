@@ -1,7 +1,9 @@
 # Overview
 
-This repository implements SIV-GAN [[Link to Paper](https://arxiv.org/abs/2103.13389)], an unconditional GAN model that can be trained in extremely low data regimes, such as learning from a single image or from a single video. The model was also presented as One-Shot GAN at the CVPR 2021 workshop for Learning from Limited and Imperfect Data [[Link to the Workshop Version](https://openaccess.thecvf.com/content/CVPR2021W/LLID/html/Sushko_One-Shot_GAN_Learning_To_Generate_Samples_From_Single_Images_and_CVPRW_2021_paper.html)]. The code allows the users to
+This repository implements SIV-GAN, an unconditional GAN model that can be trained in extremely low data regimes, such as learning from a single image or from a single video. The model was presented as One-Shot GAN at the CVPR 2021 workshop for Learning from Limited and Imperfect Data. The code allows the users to
 reproduce and extend the results reported in the study. Please cite the paper when reporting, reproducing or extending the results.
+
+[[Link to Paper](https://arxiv.org/abs/2103.13389)] [[Link to CVPR Workshop Version](https://openaccess.thecvf.com/content/CVPR2021W/LLID/html/Sushko_One-Shot_GAN_Learning_To_Generate_Samples_From_Single_Images_and_CVPRW_2021_paper.html)]
 
 
 <p align="center">
@@ -19,7 +21,7 @@ conda env create --file environment.yml
 conda activate sivgan
 ```
 
-The code adopts differentiable augmentation (DA) pipeline from [StyleGAN2-ADA](https://github.com/NVlabs/stylegan2-ada-pytorch), which has its own requirements for the environment. In principle, the code should build succesfully already with our provided environment file. If this is not the case due to CUDA incompability, please refer to the known solutions [[1](https://github.com/NVlabs/stylegan2-ada-pytorch#requirements),[2](https://github.com/NVlabs/stylegan2-ada-pytorch/issues/2#issuecomment-779457121)] in the original repository.
+The code adopts differentiable augmentation (DA) pipeline from [StyleGAN2-ADA](https://github.com/NVlabs/stylegan2-ada-pytorch), which has its own requirements for the environment. In principle, the code should build succesfully already with our provided environment file. If this is not the case due to CUDA incompability, please refer to the known solutions [[1](https://github.com/NVlabs/stylegan2-ada-pytorch#requirements),[2](https://github.com/NVlabs/stylegan2-ada-pytorch/issues/2#issuecomment-779457121)] in the DA original repository.
 
 
 ## Preparing the data
@@ -35,7 +37,7 @@ To train the model, you can use the following command:
 python train.py --exp_name test_run --dataset_name example_image --num_epochs 150000 --max_size 330
 ```
 
-In this command, the ```--exp_name``` parameter gives each experiment a unique identifier. This way, the intermediate results will be tracked in the folder ```./checkpoints/$exp_name```.  The ```--max_size``` parameter controls the output resolution. Based on this parameter and the original image aspect ratio, the code will automatically construct a recommended model configuration,. The full list of the configuration options can be found in [config.py](config.py).
+In this command, the ```--exp_name``` parameter gives each experiment a unique identifier. This way, the intermediate results will be tracked in the folder ```./checkpoints/$exp_name```.  The ```--max_size``` parameter controls the output resolution. Based on this parameter and the original image aspect ratio, the code will define the output image resolution, and also automatically construct a recommended model configuration. The full list of the configuration options can be found in [config.py](config.py).
 
 If your experiment was interrupted unexpectedly, you can continue training by running
 
