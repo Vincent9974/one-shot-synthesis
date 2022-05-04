@@ -72,7 +72,7 @@ def prepare_config(opt, recommended_config):
 
 def weights_init(m):
     classname = m.__class__.__name__
-    if classname.find('Conv2d') != -1:
+    if classname.find('Conv3d') != -1:
         m.weight.data.normal_(0.0, 0.02)
     elif classname.find('norm') != -1:
         m.weight.data.normal_(1.0, 0.02)
@@ -102,7 +102,7 @@ class Generator(nn.Module):
         num_of_channels = get_channels("Generator", config_G["ch_G"])[-self.num_blocks-1:]
 
         self.body, self.rgb_converters = nn.ModuleList([]), nn.ModuleList([])
-        self.first_linear = nn.ConvTranspose2d(self.noise_init_dim, num_of_channels[0], self.noise_shape)
+        self.first_linear = nn.ConvTranspose3d(self.noise_init_dim, num_of_channels[0], self.noise_shape)
         for i in range(self.num_blocks):
             cur_block = G_block(num_of_channels[i], num_of_channels[i+1], self.norm_name, i==0)
             cur_rgb   = to_rgb(num_of_channels[i+1])
@@ -117,7 +117,7 @@ class Generator(nn.Module):
         ans_images = list()
         ans_feat = list()
         x = self.first_linear(z)
-        for i in range(self.num_blocks):
+        for i in range(self.num_blocks): # 循环5次
             x = self.body[i](x)
             im = torch.tanh(self.rgb_converters[i](x))
             ans_images.append(im)
@@ -137,11 +137,12 @@ class G_block(nn.Module):
         middle_channel = min(in_channel, out_channel)
         self.ups = nn.Upsample(scale_factor=2) if not is_first else torch.nn.Identity()
         self.activ = nn.LeakyReLU(0.2)
-        self.conv1 = sp_norm(nn.Conv2d(in_channel,  middle_channel, 3, padding=1))
-        self.conv2 = sp_norm(nn.Conv2d(middle_channel, out_channel, 3, padding=1))
+        # sp_norm 谱归一化，生成鉴别器
+        self.conv1 = sp_norm(nn.Conv3d(in_channel, middle_channel, (3, 3, 3), padding=1))
+        self.conv2 = sp_norm(nn.Conv3d(middle_channel, out_channel, (3, 3, 3), padding=1))
         self.norm1  = get_norm_by_name(norm_name, in_channel)
         self.norm2  = get_norm_by_name(norm_name, middle_channel)
-        self.conv_sc = sp_norm(nn.Conv2d(in_channel, out_channel, (1, 1), bias=False))
+        self.conv_sc = sp_norm(nn.Conv3d(in_channel, out_channel, (1, 1, 1), bias=False))
 
     def forward(self, x):
         h = x
@@ -167,7 +168,7 @@ class Discriminator(nn.Module):
         self.no_masks = config_D["no_masks"]
         self.num_mask_channels = config_D["num_mask_channels"]
         self.bernoulli_warmup = config_D["bernoulli_warmup"]
-        num_of_channels = get_channels("Discriminator", config_D["ch_D"])[:self.num_blocks + 1]
+        num_of_channels = get_channels("Discriminator", config_D["ch_D"])[:self.num_blocks + 1]#[32,64,128,256, 256, 256]
         if not self.no_masks:
             raise NotImplementedError("w/o --no_masks is not implemented in this release")
         self.feature_prev_ratio = 8  # for msg concatenation
@@ -263,14 +264,14 @@ class D_block(nn.Module):
         ker_size, padd_size = (1, 0) if only_content else (3, 1)
         self.is_first = is_first
         self.activ = nn.LeakyReLU(0.2)
-        self.conv1 = sp_norm(nn.Conv2d(in_channel, middle_channel, ker_size, padding=padd_size))
-        self.conv2 = sp_norm(nn.Conv2d(middle_channel, out_channel, ker_size, padding=padd_size))
+        self.conv1 = sp_norm(nn.Conv3d(in_channel, middle_channel, ker_size, padding=padd_size))
+        self.conv2 = sp_norm(nn.Conv3d(middle_channel, out_channel, ker_size, padding=padd_size))
         self.norm1 = get_norm_by_name(norm_name, in_channel)
         self.norm2 = get_norm_by_name(norm_name, middle_channel)
-        self.down = nn.AvgPool2d(2) if not only_content else torch.nn.Identity()
+        self.down = nn.AvgPool3d(2) if not only_content else torch.nn.Identity()
         learned_sc = in_channel != out_channel or not only_content
         if learned_sc:
-            self.conv_sc = sp_norm(nn.Conv2d(in_channel, out_channel, (1, 1), bias=False))
+            self.conv_sc = sp_norm(nn.Conv3d(in_channel, out_channel, (1, 1, 1), bias=False))
         else:
             self.conv_sc = torch.nn.Identity()
 
