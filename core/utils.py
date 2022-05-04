@@ -55,33 +55,33 @@ def preprocess_real(batch, num_blocks_ll, device):
     image = batch["images"]
     ans.append(image)
     for i in range(num_blocks_ll-1):
-        image = F.interpolate(image, scale_factor=0.5, mode="bilinear", align_corners=False, recompute_scale_factor=False)
+        image = F.interpolate(image, scale_factor=0.5, mode="trilinear", align_corners=False, recompute_scale_factor=False)
         ans.append(image)
     batch["images"] = list(reversed(ans))
     return batch
 
 
 def sample_noise(noise_dim, batch_size):
-    return torch.randn(batch_size, noise_dim, 1, 1)
+    return torch.randn(batch_size, noise_dim, 1, 1, 1)
 
 
 def to_rgb(in_channels):
-    return sp_norm(nn.Conv2d(in_channels, 3, (3, 3), padding=(1, 1), bias=True))
+    return sp_norm(nn.Conv3d(in_channels, 3, (3, 3, 3), padding=(1, 1, 1), bias=True))
 
 
 def get_norm_by_name(norm_name, out_channel):
     if norm_name == "batch":
-        return nn.BatchNorm2d(out_channel)
+        return nn.BatchNorm3d(out_channel)
     if norm_name == "instance":
-        return nn.InstanceNorm2d(out_channel)
+        return nn.InstanceNorm3d(out_channel)
     if norm_name == "none":
         return nn.Sequential()
     raise NotImplementedError("The norm name is not recognized %s" % (norm_name))
 
 
 def from_rgb(out_channels):
-    return sp_norm(nn.Conv2d(3, out_channels, (3, 3), padding=(1, 1), bias=True))
+    return sp_norm(nn.Conv3d(3, out_channels, (3, 3, 3), padding=(1, 1, 1), bias=True))
 
 
 def to_decision(out_channel, target_channel):
-    return sp_norm(nn.Conv2d(out_channel, target_channel, (1,1)))
+    return sp_norm(nn.Conv3d(out_channel, target_channel, (1,1,1)))

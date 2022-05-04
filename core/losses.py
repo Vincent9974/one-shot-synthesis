@@ -23,7 +23,7 @@ class losses_computer():
         elif loss_mode == "bce":
             return bce_loss
         else:
-            raise ValueError('Unexpected loss_mode {}'.format(mode))
+            raise ValueError('Unexpected loss_mode {}'.format(loss_mode))
 
     def content_segm_loss(self, out_d, data, real, forD):
         """
@@ -115,8 +115,8 @@ def bce_loss(output, real, forD, no_aggr=False):
 
 def get_target_tensor(input, target_is_real):
     if target_is_real:
-        real_label_tensor = torch.FloatTensor(1).fill_(1)
-        real_label_tensor.requires_grad_(False)
+        real_label_tensor = torch.FloatTensor(1).fill_(1) #real_label_tensor =tensor([1])
+        real_label_tensor.requires_grad_(False) #requires_grad用于指示该张量是否参与梯度计算
     else:
         real_label_tensor = torch.FloatTensor(1).fill_(0)
         real_label_tensor.requires_grad_(False)
