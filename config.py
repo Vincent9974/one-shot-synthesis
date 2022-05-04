@@ -24,13 +24,13 @@ def get_arguments():
     parser = argparse.ArgumentParser()
 
     # basics:
-    parser.add_argument('--exp_name', help='experiment name for trained folder', required=True)
+    parser.add_argument('--exp_name', help='experiment name for trained folder', default='shayan_3d') # exp_name
     parser.add_argument('--cpu', action='store_true', help='run on cpu')
     parser.add_argument('--dataroot', help='location of datasets', default='datasets/')
     parser.add_argument('--checkpoints_dir', help='location of experiments', default='checkpoints/')
-    parser.add_argument('--dataset_name', help='dataset name', default='example')
-    parser.add_argument('--num_epochs', type=int, default=100000, help='number of epochs')
-    parser.add_argument('--max_size', type=int, help='limit image size in max dimension', default=1024)
+    parser.add_argument('--dataset_name', help='dataset name', default='shayan_3d') # dataset
+    parser.add_argument('--num_epochs', type=int, default=10000, help='number of epochs') # 迭代
+    parser.add_argument('--max_size', type=int, help='limit image size in max dimension', default= 80) # 图片的maxsize
     parser.add_argument('--continue_train', action="store_true", help='continue training of a previous checkpoint?')
     parser.add_argument('--which_epoch', type=int, help='which epoch to use for evaluation')
     parser.add_argument('--num_generated', type=int, default=100, help='which epoch to use for evaluation')
@@ -68,7 +68,7 @@ def get_arguments():
     # stats tracking
     parser.add_argument('--freq_save_loss', type=int, help='frequency of loss plot updates', default=1000)
     parser.add_argument('--freq_print', type=int, help='frequency of saving images and timer', default=1000)
-    parser.add_argument('--freq_save_ckpt', type=int, help='frequency of saving checkpoints', default=10000)
+    parser.add_argument('--freq_save_ckpt', type=int, help='frequency of saving checkpoints', default=1000)
     return parser
 
 
@@ -101,3 +101,7 @@ def save_options(opt, parser):
 
     with open(path_name + '/opt.pkl', 'wb') as opt_file:
         pickle.dump(opt, opt_file)
+
+# import tifffile
+# img = tifffile.imread('/home1/Usr/zhangwenqing/one-shot-synthesis-3d-3/datasets/shayan_3d/image/ti_80.tif')
+# print(img.shape) /(80*80*80)
