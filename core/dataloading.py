@@ -1,21 +1,22 @@
 import os
+import tifffile
 import torch
 import warnings
-from PIL import Image
-from torchvision import transforms as TR
-import torchvision.transforms.functional as F
+# from PIL import Image
+# from torchvision import transforms as TR
+# import torchvision.transforms.functional as F
 from .recommended_config import get_recommended_config
-
+#from PIL import image
 
 def prepare_dataloading(opt):
     dataset = Dataset(opt)
-    recommended_config = {"image resolution": dataset.image_resolution,
-                          "noise_shape": dataset.recommended_config[0],
-                          "num_blocks_g":  dataset.recommended_config[1],
-                          "num_blocks_d":  dataset.recommended_config[2],
-                          "num_blocks_d0": dataset.recommended_config[3],
+    recommended_config = {"image resolution": dataset.image_resolution,# (80,80,80)
+                          "noise_shape": dataset.recommended_config[0],# (5, 5, 5)
+                          "num_blocks_g":  dataset.recommended_config[1],#5
+                          "num_blocks_d":  dataset.recommended_config[2],#6
+                          "num_blocks_d0": dataset.recommended_config[3],#2
                           "no_masks": dataset.no_masks,
-                          "num_mask_channels": dataset.num_mask_channels}
+                          "num_mask_channels": dataset.num_mask_channels}#None
     if not recommended_config["no_masks"] and not opt.no_masks:
         print("Using the training regime *with* segmentation masks")
     else:
@@ -60,57 +61,61 @@ class Dataset(torch.utils.data.Dataset):
         """
         res_list = list()
         for cur_img in self.list_imgs:
-            img_pil = Image.open(os.path.join(self.root_images, cur_img)).convert("RGB")
-            res_list.append(img_pil.size)
+            #img_pil = Image.open(os.path.join(self.root_images, cur_img)).convert("RGB")
+            img_pil = tifffile.imread(os.path.join(self.root_images, cur_img))
+            #print(img_pil.shape) /(80, 80, 80)
+            res_list.append(img_pil.shape)
         all_res_equal = len(set(res_list)) <= 1
         if all_res_equal:
-            size_1, size_2 = res_list[0]  # all images have same resolution -> using original resolution
+            size_1, size_2, size_3 = res_list[0]  # all images have same resolution -> using original resolution
         else:
             warnings.warn("Images in the dataset have different resolutions. Resizing them to squares of mean size.")
-            size_1 = size_2 = sum([sum(item) for item in res_list]) / (2 * len(res_list))
-        size_1, size_2 = self.bound_resolution(size_1, size_2, max_size)
-        return size_2, size_1
+            size_1 = size_2 = size_3 = sum([sum(item) for item in res_list]) / (2 * len(res_list))
+        size_1, size_2, size_3 = self.bound_resolution(size_1, size_2, size_3,max_size)
+        return size_3, size_2, size_1
 
-    def bound_resolution(self, size_1, size_2, max_size):
+    def bound_resolution(self, size_1, size_2, size_3, max_size):
         """
         Ensure the image shape does not exceed --max_size
         """
         if size_1 > max_size:
-            size_1, size_2 = max_size, size_2 / (size_1 / max_size)
+            size_1, size_2, size_3 = max_size, size_2 / (size_1 / max_size), size_3 / (size_1 / max_size)
         if size_2 > max_size:
-            size_1, size_2 = size_1 / (size_2 / max_size), max_size
-        return int(size_1), int(size_2)
+            size_1, size_2, size_3 = size_1 / (size_2 / max_size), max_size, size_3 / (size_2 / max_size)
+        if size_3 > max_size:
+            size_1, size_2, size_3 = size_1 / (size_3 / max_size), size_2 / (size_3 / max_size), max_size
+        return int(size_1), int(size_2), int(size_3)
 
-    def get_num_mask_channels(self):
-        """
-        Iterate over all masks to determine how many classes are there
-        """
-        max_index = 0
-        for cur_mask in self.list_masks:
-            im = TR.functional.to_tensor(Image.open(os.path.join(self.root_masks, cur_mask)))
-            if (im.unique() * 256).max() > 30:
-                # --- black-white map of one object and background --- #
-                max_index = 2 if max_index < 2 else max_index
-            else:
-                # --- multiple semantic objects --- #
-                cur_max = torch.max(torch.round(im * 256))
-                max_index = cur_max + 1 if max_index < cur_max + 1 else max_index
-        return int(max_index)
+    # def get_num_mask_channels(self):
+    #     """
+    #     Iterate over all masks to determine how many classes are there
+    #     """
+    #     max_index = 0
+    #     for cur_mask in self.list_masks:
+    #         im = TR.functional.to_tensor(Image.open(os.path.join(self.root_masks, cur_mask)))
+    #         if (im.unique() * 256).max() > 30:
+    #             # --- black-white map of one object and background --- #
+    #             max_index = 2 if max_index < 2 else max_index
+    #         else:
+    #             # --- multiple semantic objects --- #
+    #             cur_max = torch.max(torch.round(im * 256))
+    #             max_index = cur_max + 1 if max_index < cur_max + 1 else max_index
+    #     return int(max_index)
 
-    def create_mask_channels(self, mask):
-        """
-        Convert a mask to one-hot representation
-        """
-        if (mask.unique() * 256).max() > 30:
-            # --- only object and background--- #
-            mask = torch.cat((1 - mask, mask), dim=0)
-            return mask
-        else:
-            # --- multiple semantic objects --- #
-            integers = torch.round(mask * 256)
-            mask = torch.nn.functional.one_hot(integers.long(), num_classes=self.num_mask_channels)
-            mask = mask.float()[0].permute(2, 0, 1)
-            return mask
+    # def create_mask_channels(self, mask):
+    #     """
+    #     Convert a mask to one-hot representation
+    #     """
+    #     if (mask.unique() * 256).max() > 30:
+    #         # --- only object and background--- #
+    #         mask = torch.cat((1 - mask, mask), dim=0)
+    #         return mask
+    #     else:
+    #         # --- multiple semantic objects --- #
+    #         integers = torch.round(mask * 256)
+    #         mask = torch.nn.functional.one_hot(integers.long(), num_classes=self.num_mask_channels)
+    #         mask = mask.float()[0].permute(2, 0, 1)
+    #         return mask
 
     def __getitem__(self, index):
         output = dict()
@@ -118,10 +123,20 @@ class Dataset(torch.utils.data.Dataset):
         target_size = self.image_resolution
 
         # --- image ---#
-        img_pil = Image.open(os.path.join(self.root_images, self.list_imgs[idx])).convert("RGB")
-        img = F.to_tensor(F.resize(img_pil, size=target_size))
-        img = (img - 0.5) * 2
-        output["images"] = img
+        # img_pil = Image.open(os.path.join(self.root_images, self.list_imgs[idx])).convert("RGB")
+        # img = F.to_tensor(F.resize(img_pil, size=target_size))
+        # img = (img - 0.5) * 2
+        # output["images"] = img
+        img_pil = tifffile.imread(os.path.join(self.root_images, self.list_imgs[idx]))
+        img = torch.from_numpy(img_pil)
+        img = img.unsqueeze(0)  # 增加一个维度torch.size([1,80,80,80])
+        img = img.expand(3, 80, 80, 80)  # 对shape为1的进行扩展，对shape不为1的只能保持不变
+        # print(img)
+
+        img = (img / 255 - 0.5) * 2
+        # print(img)
+        output["images"] = img  # output是个字典，key:"images",value:img(这里的img是张量)
+        # print(output["images"])
 
         # --- mask ---#
         if not self.no_masks:
