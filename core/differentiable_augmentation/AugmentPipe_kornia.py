@@ -13,6 +13,7 @@ class AugmentPipe_kornia(torch.nn.Module):
 
     def forward(self, batch):
         x = batch["images"]
+        #print(1)
         if not self.no_masks:
             raise ValueError("Kornia augmentations without --no_masks regime is not supported")
 
@@ -23,7 +24,8 @@ class AugmentPipe_kornia(torch.nn.Module):
         if random.random() < self.prob/2:
             tr = kornia.augmentation.RandomCrop(size=(sh[2], sh[3]), same_on_batch=True)
             for i in range(sh[0]):
-                x[i] = torch.nn.functional.interpolate(x[i], size=(2*sh[2], 2*sh[3]), mode="bilinear")
+                #x[i] = torch.nn.functional.interpolate(x[i], size=(2*sh[2], 2*sh[3]), mode="bilinear")
+                x[i] = torch.nn.functional.interpolate(x[i], size=(2 * sh[2], 2 * sh[3]), mode="Trilinear")
                 x[i] = tr(x[i])
 
         if random.random() < self.prob:
@@ -32,7 +34,8 @@ class AugmentPipe_kornia(torch.nn.Module):
                 tr = kornia.augmentation.RandomCrop(size=(int(sh[2]*r), int(sh[3]*r)), same_on_batch=True)
                 for i in range(sh[0]):
                     x[i] = tr(x[i])
-                    x[i] = torch.nn.functional.interpolate(x[i], size=(sh[2], sh[3]), mode="bilinear")
+                    #x[i] = torch.nn.functional.interpolate(x[i], size=(sh[2], sh[3]), mode="bilinear")
+                    x[i] = torch.nn.functional.interpolate(x[i], size=(sh[2], sh[3]), mode="Trilinear")
             else:
                 tr = kornia.augmentation.RandomRotation(degrees=8, same_on_batch=True)
                 for i in range(sh[0]):
@@ -40,7 +43,8 @@ class AugmentPipe_kornia(torch.nn.Module):
                 tr = kornia.augmentation.CenterCrop(size=(sh[2]*0.80, sh[3]*0.80))
                 for i in range(sh[0]):
                     x[i] = tr(x[i])
-                    x[i] = torch.nn.functional.interpolate(x[i], size=(sh[2], sh[3]), mode="bilinear")
+                    #x[i] = torch.nn.functional.interpolate(x[i], size=(sh[2], sh[3]), mode="bilinear")
+                    x[i] = torch.nn.functional.interpolate(x[i], size=(sh[2], sh[3]), mode="Trilinear")
 
         if random.random() < self.prob:
             tr = kornia.augmentation.RandomHorizontalFlip(p=1.0, same_on_batch=True)
@@ -66,8 +70,8 @@ def combine_fakes(inp):
     for i in range(sh[0]):
         cur = torch.zeros_like(inp[-1][0, :, :, :]).repeat(len(inp), 1, 1, 1)
         for j in range(len(inp)):
-            cur[j, :, :, :] = F.interpolate(inp[j][i, :, :, :].unsqueeze(0), size=(sh[2], sh[3]),
-                                                              mode="bilinear")
+            #cur[j, :, :, :] = F.interpolate(inp[j][i, :, :, :].unsqueeze(0), size=(sh[2], sh[3]), mode="bilinear")
+            cur[j, :, :, :] = F.interpolate(inp[j][i, :, :, :].unsqueeze(0), size=(sh[2], sh[3]), mode="Trilinear")
         ans.append(cur)
     return ans
 
@@ -78,9 +82,12 @@ def detach_fakes(inp, ref):
     for i in range(len(ref)):
         cur = torch.zeros_like(ref[i])
         for j in range(sh[0]):
+            # cur[j, :, :, :] = F.interpolate(inp[j][i, :, :, :].unsqueeze(0),
+            #                                                   size=(ref[i].shape[2], ref[i].shape[3]),
+            #                                                   mode="bilinear")
             cur[j, :, :, :] = F.interpolate(inp[j][i, :, :, :].unsqueeze(0),
-                                                              size=(ref[i].shape[2], ref[i].shape[3]),
-                                                              mode="bilinear")
+                                            size=(ref[i].shape[2], ref[i].shape[3]),
+                                            mode="Trilinear")
         ans.append(cur)
     return ans
 

@@ -4,6 +4,7 @@ from .AugmentPipe_kornia import AugmentPipe_kornia
 
 class augment_pipe():
     def __init__(self, opt):
+        #print(opt.use_kornia_augm)：False
         if opt.use_kornia_augm:
             self.augment_func = AugmentPipe_kornia(opt.prob_augm, opt.no_masks).to(opt.device)
         else:

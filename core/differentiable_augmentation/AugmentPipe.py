@@ -1,6 +1,6 @@
 """
 This code adopts Differentiable Augmentation pipeline from NVlabs/stylegan2-ada
-and extends it with simultaneous augmentation of segmentation masks
+and extends it with simultaneous augmentation of segmentation masks#并通过同时增加分割模板对其进行扩展
 """
 
 
@@ -9,14 +9,14 @@ import scipy.signal
 import torch
 from .torch_utils import persistence
 from .torch_utils import misc
-from .torch_utils.ops import upfirdn2d
+from .torch_utils.ops import upfirdn3d
 from .torch_utils.ops import grid_sample_gradfix
-from .torch_utils.ops import conv2d_gradfix
+from .torch_utils.ops import conv3d_gradfix
 
 
 
 #----------------------------------------------------------------------------
-# Coefficients of various wavelet decomposition low-pass filters.
+# Coefficients of various wavelet decomposition low-pass filters.#各种小波分解低通滤波器的系数。
 
 wavelets = {
     'haar': [0.7071067811865476, 0.7071067811865476],
@@ -39,7 +39,6 @@ wavelets = {
 
 #----------------------------------------------------------------------------
 # Helpers for constructing transformation matrices.
-
 def matrix(*rows, device=None):
     assert all(len(row) == len(rows[0]) for row in rows)
     elems = [x for row in rows for x in row]
@@ -88,14 +87,26 @@ def rotate2d(theta, **kwargs):
         **kwargs)
 
 def rotate3d(v, theta, **kwargs):
-    vx = v[..., 0]; vy = v[..., 1]; vz = v[..., 2]
-    s = torch.sin(theta); c = torch.cos(theta); cc = 1 - c
+    #vx = v[..., 0]; vy = v[..., 1]; vz = v[..., 2]
+    vx = v[..., 0]; vy = v[..., 1]; vz = v[...,2]
+    #print(v.shape)
+    #print(vx)
+    #print(vy.shape)
+    #print(vz.shape) #tensor([-0.0000, -0.0000, -0.0490, -0.0000, -0.0000], device='cuda:0')
+    #print(theta.shape)[5,3,80,80]
+    s = torch.sin(theta); c = torch.cos(theta); cc = 1 - c #torch.Size([5])
+    # print(s.shape)
+    #print(c)
+    #print(cc)
+    d=vx * vx*cc+c #张量A和B在广播过程中，对应维度不匹配
+    #print(d.shape)[5,3,80,80]
     return matrix(
-        [vx*vx*cc+c,    vx*vy*cc-vz*s, vx*vz*cc+vy*s, 0],
+        [vx*vx*cc+c,    vx*vy*cc-vz*s, vx*vz*cc+vy*s, 0], #两个相同大小的矩阵才能使用*
         [vy*vx*cc+vz*s, vy*vy*cc+c,    vy*vz*cc-vx*s, 0],
         [vz*vx*cc-vy*s, vz*vy*cc+vx*s, vz*vz*cc+c,    0],
         [0,             0,             0,             1],
         **kwargs)
+
 
 def translate2d_inv(tx, ty, **kwargs):
     return translate2d(-tx, -ty, **kwargs)
@@ -105,6 +116,15 @@ def scale2d_inv(sx, sy, **kwargs):
 
 def rotate2d_inv(theta, **kwargs):
     return rotate2d(-theta, **kwargs)
+
+def translate3d_inv(tx, ty,tz, **kwargs): #平移变换
+    return translate3d(-tx, -ty, -tz, **kwargs)
+
+def scale3d_inv(sx, sy,sz, **kwargs): #缩放变换
+    return scale3d(1 / sx, 1 / sy, 1 / sz, **kwargs)
+
+def rotate3d_inv(v,theta, **kwargs):  #旋转变换
+    return rotate3d(v, -theta, **kwargs)
 
 #----------------------------------------------------------------------------
 # Versatile image augmentation pipeline from the paper
@@ -120,7 +140,7 @@ class AugmentPipe(torch.nn.Module):
 #        xflip=0, rotate90=0, xint=0, xint_max=0.125,
 #        scale=0, rotate=0, aniso=0, xfrac=0, scale_std=0.2, rotate_max=1, aniso_std=0.2, xfrac_std=0.125,
 #        brightness=0, contrast=0, lumaflip=0, hue=0, saturation=0, brightness_std=0.2, contrast_std=0.5, hue_max=1, saturation_std=1,
-#        imgfilter=0, imgfilter_bands=[1,1,1,1], imgfilter_std=1,
+#        imgfilter=0, imgfilter_bands=[1,1,1,1,1], imgfilter_std=1,
 #        noise=0, cutout=0, noise_std=0.1, cutout_size=0.5
         super().__init__()
 
@@ -129,7 +149,8 @@ class AugmentPipe(torch.nn.Module):
         self.register_buffer('p', torch.ones([]))       # Overall multiplier for augmentation probability.
         xint_max, scale_std, rotate_max, aniso_std, xfrac_std, cutout_size = 0.200, 0.2, 0.1, 0.2, 0.125, 0.5
         brightness_std, contrast_std, hue_max, saturation_std, noise_std = 0.2, 0.5, 1.0, 1.0, 0.1
-        imgfilter_bands, imgfilter_std =[1,1,1,1], 1
+        #imgfilter_bands, imgfilter_std =[1,1,1,1], 1
+        imgfilter_bands, imgfilter_std =[1,1,1,1,1], 1
         prob_rot = 1 - prob**(1/2)
 
         # Pixel blitting.
@@ -171,7 +192,7 @@ class AugmentPipe(torch.nn.Module):
         self.cutout_size      = float(cutout_size)      # Size of the cutout rectangle, relative to image dimensions.
 
         # Setup orthogonal lowpass filter for geometric augmentations.
-        self.register_buffer('Hz_geom', upfirdn2d.setup_filter(wavelets['sym6']))
+        self.register_buffer('Hz_geom', upfirdn3d.setup_filter(wavelets['sym6']))
 
         # Construct filter bank for image-space filtering.
         Hz_lo = np.asarray(wavelets['sym2'])            # H(z)
@@ -186,7 +207,6 @@ class AugmentPipe(torch.nn.Module):
         self.register_buffer('Hz_fbank', torch.as_tensor(Hz_fbank, dtype=torch.float32))
 
     def forward(self, batch,  debug_percentile=None):
-
         input_images = batch["images"]
         if not self.no_masks:
             segm_mask = batch["masks"]
@@ -197,11 +217,15 @@ class AugmentPipe(torch.nn.Module):
             segm_mask_threech = segm_mask
         image_high_res = input_images[-1]
 
+
+
         if not self.no_masks:
             raise NotImplementedError("w/o --no_masks is not implemented in this release")
 
-        assert isinstance(image_high_res, torch.Tensor) and image_high_res.ndim == 4
-        batch_size, num_channels, height, width = image_high_res.shape
+        #assert isinstance(image_high_res, torch.Tensor) and image_high_res.ndim == 4
+        assert isinstance(image_high_res, torch.Tensor) and image_high_res.ndim == 5
+        batch_size, num_channels, depth, height, width = image_high_res.shape
+        #print(image_high_res.shape)
         device = image_high_res.device
         if debug_percentile is not None:
             debug_percentile = torch.as_tensor(debug_percentile, dtype=torch.float32, device=device)
@@ -210,33 +234,39 @@ class AugmentPipe(torch.nn.Module):
         # Select parameters for pixel blitting.
         # -------------------------------------
 
-        # Initialize inverse homogeneous 2D transform: G_inv @ pixel_out ==> pixel_in
-        I_3 = torch.eye(3, device=device)
+        # Initialize inverse homogeneous 3d transform: G_inv @ pixel_out ==> pixel_in  #初始化反齐次3d变换：
+        I_3 = torch.eye(4, device=device) #生成一个对角线上是1的矩阵
         G_inv = I_3
 
         # Apply x-flip with probability (xflip * strength).
         if self.xflip > 0:
-            i = torch.floor(torch.rand([batch_size], device=device) * 2)
+            i = torch.floor(torch.rand([batch_size], device=device) * 2) #torch.floor(10)?
             i = torch.where(torch.rand([batch_size], device=device) < self.xflip * self.p, i, torch.zeros_like(i))
             if debug_percentile is not None:
                 i = torch.full_like(i, torch.floor(debug_percentile * 2))
-            G_inv = G_inv @ scale2d_inv(1 - 2 * i, 1)
+            #G_inv = G_inv @ scale3d_inv(1 - 2 * i, 1)
+            G_inv = G_inv @ scale3d_inv(1 - 2 * i,1 - 2 * i,1)  #@:矩阵乘法
 
-        # Apply 90 degree rotations with probability (rotate90 * strength).
+        # Apply 90 degree rotations with probability (rotate90 * strength).以概率旋转90度（旋转90度*强度）。
         if self.rotate90 > 0:
             i = torch.floor(torch.rand([batch_size], device=device) * 4)
             i = torch.where(torch.rand([batch_size], device=device) < self.rotate90 * self.p, i, torch.zeros_like(i))
             if debug_percentile is not None:
                 i = torch.full_like(i, torch.floor(debug_percentile * 4))
-            G_inv = G_inv @ rotate2d_inv(-np.pi / 2 * i)
+            #G_inv = G_inv @ rotate3d_inv(-np.pi / 2 * i)
+            print(-np.pi / 2 * i)
+            G_inv = G_inv @ rotate3d_inv(image_high_res,-np.pi / 2 * i)
 
         # Apply integer translation with probability (xint * strength).
         if self.xint > 0:
-            t = (torch.rand([batch_size, 2], device=device) * 2 - 1) * self.xint_max
+            #t = (torch.rand([batch_size, 2], device=device) * 2 - 1) * self.xint_max
+            t = (torch.rand([batch_size, 3], device=device) * 2 - 1) * self.xint_max
+            #t = torch.where(torch.rand([batch_size, 1], device=device) < self.xint * self.p, t, torch.zeros_like(t))
             t = torch.where(torch.rand([batch_size, 1], device=device) < self.xint * self.p, t, torch.zeros_like(t))
             if debug_percentile is not None:
                 t = torch.full_like(t, (debug_percentile * 2 - 1) * self.xint_max)
-            G_inv = G_inv @ translate2d_inv(torch.round(t[:,0] * width), torch.round(t[:,1] * height))
+            #G_inv = G_inv @ translate3d_inv(torch.round(t[:,0] * width), torch.round(t[:,1] * height))
+            G_inv = G_inv @ translate3d_inv(torch.round(t[:, 0] * width), torch.round(t[:, 1] * height), torch.round(t[:, 2] * depth))
 
         # --------------------------------------------------------
         # Select parameters for general geometric transformations.
@@ -248,16 +278,25 @@ class AugmentPipe(torch.nn.Module):
             s = torch.where(torch.rand([batch_size], device=device) < self.scale * self.p, s, torch.ones_like(s))
             if debug_percentile is not None:
                 s = torch.full_like(s, torch.exp2(torch.erfinv(debug_percentile * 2 - 1) * self.scale_std))
-            G_inv = G_inv @ scale2d_inv(s, s)
+            #G_inv = G_inv @ scale3d_inv(s, s)
+            G_inv = G_inv @ scale3d_inv(s, s, s)
 
         # Apply pre-rotation with probability p_rot.
         p_rot = 1 - torch.sqrt((1 - self.rotate * self.p).clamp(0, 1)) # P(pre OR post) = p
+        # print(p_rot)
         if self.rotate > 0:
+            #theta = (torch.rand([batch_size], device=device) * 2 - 1) * np.pi * self.rotate_max
+            #theta = (torch.rand([5,3,80,80],device=device) * 2 - 1) * np.pi * self.rotate_max
+            #theta = torch.where(torch.rand([batch_size], device=device) < p_rot, theta, torch.zeros_like(theta))
             theta = (torch.rand([batch_size], device=device) * 2 - 1) * np.pi * self.rotate_max
+            # print(theta)
             theta = torch.where(torch.rand([batch_size], device=device) < p_rot, theta, torch.zeros_like(theta))
+            # print(theta)
             if debug_percentile is not None:
                 theta = torch.full_like(theta, (debug_percentile * 2 - 1) * np.pi * self.rotate_max)
-            G_inv = G_inv @ rotate2d_inv(-theta) # Before anisotropic scaling.
+            #G_inv = G_inv @ rotate3d_inv(-theta) # Before anisotropic scaling.
+            #print(-theta) tensor([-0.0000, -0.0000, -0.0490, -0.0000, -0.0000], device='cuda:0')
+            G_inv = G_inv @ rotate3d_inv(image_high_res,-theta)  # Before anisotropic scaling.
 
         # Apply anisotropic scaling with probability (aniso * strength).
         if self.aniso > 0:
@@ -265,7 +304,8 @@ class AugmentPipe(torch.nn.Module):
             s = torch.where(torch.rand([batch_size], device=device) < self.aniso * self.p, s, torch.ones_like(s))
             if debug_percentile is not None:
                 s = torch.full_like(s, torch.exp2(torch.erfinv(debug_percentile * 2 - 1) * self.aniso_std))
-            G_inv = G_inv @ scale2d_inv(s, 1 / s)
+            #G_inv = G_inv @ scale3d_inv(s, 1 / s)
+            G_inv = G_inv @ scale3d_inv(s, 1 / s,1 / s)
 
         # Apply post-rotation with probability p_rot.
         if self.rotate > 0:
@@ -273,7 +313,8 @@ class AugmentPipe(torch.nn.Module):
             theta = torch.where(torch.rand([batch_size], device=device) < p_rot, theta, torch.zeros_like(theta))
             if debug_percentile is not None:
                 theta = torch.zeros_like(theta)
-            G_inv = G_inv @ rotate2d_inv(-theta) # After anisotropic scaling.
+            #G_inv = G_inv @ rotate3d_inv(-theta) # After anisotropic scaling.
+            G_inv = G_inv @ rotate3d_inv(image_high_res,-theta)  # After anisotropic scaling.
 
         # Apply fractional translation with probability (xfrac * strength).
         if self.xfrac > 0:
@@ -281,7 +322,8 @@ class AugmentPipe(torch.nn.Module):
             t = torch.where(torch.rand([batch_size, 1], device=device) < self.xfrac * self.p, t, torch.zeros_like(t))
             if debug_percentile is not None:
                 t = torch.full_like(t, torch.erfinv(debug_percentile * 2 - 1) * self.xfrac_std)
-            G_inv = G_inv @ translate2d_inv(t[:,0] * width, t[:,1] * height)
+            #G_inv = G_inv @ translate3d_inv(t[:,0] * width, t[:,1] * height)
+            G_inv = G_inv @ translate3d_inv(t[:, 0] * width, t[:, 1] * height, t[:, 2] * depth)
 
         # ----------------------------------
         # Execute geometric transformations.
@@ -292,7 +334,9 @@ class AugmentPipe(torch.nn.Module):
             # Calculate padding.
             cx = (width - 1) / 2
             cy = (height - 1) / 2
-            cp = matrix([-cx, -cy, 1], [cx, -cy, 1], [cx, cy, 1], [-cx, cy, 1], device=device) # [idx, xyz]
+            cz = (depth - 1) / 2
+            #cp = matrix([-cx, -cy, 1], [cx, -cy, 1], [cx, cy, 1], [-cx, cy, 1], device=device) # [idx, xyz]
+            cp = matrix([-cx, -cy, -cz, 1], [cx, cy,-cz, 1], [cx, cy, 1], [-cx, cy, 1], device=device)  # [idx, xyz]
             cp = G_inv @ cp.t() # [batch, xyz, idx]
             Hz_pad = self.Hz_geom.shape[0] // 4
             margin = cp[:, :2, :].permute(1, 0, 2).flatten(1) # [xy, batch * idx]
@@ -300,26 +344,26 @@ class AugmentPipe(torch.nn.Module):
             margin = margin + misc.constant([Hz_pad * 2 - cx, Hz_pad * 2 - cy] * 2, device=device)
             margin = margin.max(misc.constant([0, 0] * 2, device=device))
             margin = margin.min(misc.constant([width-1, height-1] * 2, device=device))
-            mx0, my0, mx1, my1 = margin.ceil().to(torch.int32)
+            mx0, my0,mz0, mx1, my1,mz1 = margin.ceil().to(torch.int32)
 
             G_remembered = G_inv
             for bl_idx in range(len(images_by_G_block)):  # here apply transforms for images
                 # Pad image and adjust origin.
                 G_inv = G_remembered
                 images_by_G_block[bl_idx] = torch.nn.functional.pad(input=images_by_G_block[bl_idx] , pad=[mx0,mx1,my0,my1], mode='reflect')
-                G_inv = translate2d((mx0 - mx1) / 2, (my0 - my1) / 2) @ G_inv
+                G_inv = translate3d((mx0 - mx1) / 2, (my0 - my1) / 2, (mz0 - mz1) / 2) @ G_inv
                 # Upsample.
-                images_by_G_block[bl_idx]  = upfirdn2d.upsample2d(x=images_by_G_block[bl_idx] , f=self.Hz_geom, up=2)
-                G_inv = scale2d(2, 2, device=device) @ G_inv @ scale2d_inv(2, 2, device=device)
-                G_inv = translate2d(-0.5, -0.5, device=device) @ G_inv @ translate2d_inv(-0.5, -0.5, device=device)
+                images_by_G_block[bl_idx]  = upfirdn3d.upsample3d(x=images_by_G_block[bl_idx] , f=self.Hz_geom, up=2)
+                G_inv = scale3d(2, 2, 2, device=device) @ G_inv @ scale3d_inv(2, 2,2, device=device)
+                G_inv = translate3d(-0.5, -0.5,-0.5, device=device) @ G_inv @ translate3d_inv(-0.5, -0.5,-0.5, device=device)
                 # Execute transformation.
-                shape = [batch_size, num_channels, (height + Hz_pad * 2) * 2, (width + Hz_pad * 2) * 2]
-                G_inv = scale2d(2 / images_by_G_block[bl_idx].shape[3], 2 / images_by_G_block[bl_idx].shape[2], device=device) @ G_inv @ scale2d_inv(2 / shape[3], 2 / shape[2], device=device)
+                shape = [batch_size, num_channels,(depth + Hz_pad * 2) * 2, (height + Hz_pad * 2) * 2, (width + Hz_pad * 2) * 2]
+                G_inv = scale3d(2 / images_by_G_block[bl_idx].shape[4], 2 / images_by_G_block[bl_idx].shape[3], 2 / images_by_G_block[bl_idx].shape[2], device=device) @ G_inv @ scale3d_inv(2 / shape[4], 2 / shape[3], 2 / shape[2], device=device)
                 grid = torch.nn.functional.affine_grid(theta=G_inv[:,:2,:], size=shape, align_corners=False)
                 images_by_G_block[bl_idx]  = grid_sample_gradfix.grid_sample(images_by_G_block[bl_idx] , grid)
 
                 # Downsample and crop.
-                images_by_G_block[bl_idx]  = upfirdn2d.downsample2d(x=images_by_G_block[bl_idx] , f=self.Hz_geom, down=2, padding=-Hz_pad*2, flip_filter=True)
+                images_by_G_block[bl_idx]  = upfirdn3d.downsample3d(x=images_by_G_block[bl_idx] , f=self.Hz_geom, down=2, padding=-Hz_pad*2, flip_filter=True)
 
 
         # --------------------------------------------
@@ -379,7 +423,7 @@ class AugmentPipe(torch.nn.Module):
 
         if C is not I_4:
             for bl_idx in range(len(images_by_G_block)):  #################### color transforms for images
-                images_by_G_block[bl_idx] = images_by_G_block[bl_idx].reshape([batch_size, num_channels, height * width])
+                images_by_G_block[bl_idx] = images_by_G_block[bl_idx].reshape([batch_size, num_channels, depth * height * width])
                 if num_channels == 3:
                     images_by_G_block[bl_idx] = C[:, :3, :3] @ images_by_G_block[bl_idx] + C[:, :3, 3:]
                 elif num_channels == 1:
@@ -387,7 +431,7 @@ class AugmentPipe(torch.nn.Module):
                     images_by_G_block[bl_idx] = images_by_G_block[bl_idx] * C[:, :, :3].sum(dim=2, keepdims=True) + C[:, :, 3:]
                 else:
                     raise ValueError('Image must be RGB (3 channels) or L (1 channel)')
-                images_by_G_block[bl_idx] = images_by_G_block[bl_idx].reshape([batch_size, num_channels, height, width])
+                images_by_G_block[bl_idx] = images_by_G_block[bl_idx].reshape([batch_size, num_channels,depth, height, width])
 
         # ----------------------
         # Image-space filtering.
@@ -418,11 +462,11 @@ class AugmentPipe(torch.nn.Module):
             # Apply filter.
             for bl_idx in range(len(images_by_G_block)):  #################### filter  transforms for images
                 p = self.Hz_fbank.shape[1] // 2
-                images_by_G_block[bl_idx] = images_by_G_block[bl_idx].reshape([1, batch_size * num_channels, height, width])
+                images_by_G_block[bl_idx] = images_by_G_block[bl_idx].reshape([1, batch_size * num_channels,depth, height, width])
                 images_by_G_block[bl_idx] = torch.nn.functional.pad(input=images_by_G_block[bl_idx], pad=[p,p,p,p], mode='reflect')
-                images_by_G_block[bl_idx] = conv2d_gradfix.conv2d(input=images_by_G_block[bl_idx], weight=Hz_prime.unsqueeze(2), groups=batch_size*num_channels)
-                images_by_G_block[bl_idx] = conv2d_gradfix.conv2d(input=images_by_G_block[bl_idx], weight=Hz_prime.unsqueeze(3), groups=batch_size*num_channels)
-                images_by_G_block[bl_idx] = images_by_G_block[bl_idx].reshape([batch_size, num_channels, height, width])
+                images_by_G_block[bl_idx] = conv3d_gradfix.conv3d(input=images_by_G_block[bl_idx], weight=Hz_prime.unsqueeze(2), groups=batch_size*num_channels)
+                images_by_G_block[bl_idx] = conv3d_gradfix.conv3d(input=images_by_G_block[bl_idx], weight=Hz_prime.unsqueeze(3), groups=batch_size*num_channels)
+                images_by_G_block[bl_idx] = images_by_G_block[bl_idx].reshape([batch_size, num_channels,depth, height, width])
 
         # ------------------------
         # Image-space corruptions.
@@ -435,7 +479,7 @@ class AugmentPipe(torch.nn.Module):
             if debug_percentile is not None:
                 sigma = torch.full_like(sigma, torch.erfinv(debug_percentile) * self.noise_std)
             for bl_idx in range(len(images_by_G_block)):  #################### noise  transforms for images
-                images_by_G_block[bl_idx] = images_by_G_block[bl_idx] + torch.randn([batch_size, num_channels, height, width], device=device) * sigma
+                images_by_G_block[bl_idx] = images_by_G_block[bl_idx] + torch.randn([batch_size, num_channels,depth, height, width], device=device) * sigma
 
         # Apply cutout with probability (cutout * strength).
         if self.cutout > 0:
@@ -445,10 +489,12 @@ class AugmentPipe(torch.nn.Module):
             if debug_percentile is not None:
                 size = torch.full_like(size, self.cutout_size)
                 center = torch.full_like(center, debug_percentile)
-            coord_x = torch.arange(width, device=device).reshape([1, 1, 1, -1])
-            coord_y = torch.arange(height, device=device).reshape([1, 1, -1, 1])
+            coord_x = torch.arange(width, device=device).reshape([1, 1, 1,1, -1])
+            coord_y = torch.arange(height, device=device).reshape([1, 1,1, -1, 1])
+            coord_z = torch.arange(depth, device=device).reshape([1, 1, -1, 1,1])
             mask_x = (((coord_x + 0.5) / width - center[:, 0]).abs() >= size[:, 0] / 2)
             mask_y = (((coord_y + 0.5) / height - center[:, 1]).abs() >= size[:, 1] / 2)
+            mask_z = (((coord_z + 0.5) / depth - center[:, 2]).abs() >= size[:, 2] / 2)
             mask = torch.logical_or(mask_x, mask_y).to(torch.float32)
             for bl_idx in range(len(images_by_G_block)):  #################### cutout  transforms for images
                 images_by_G_block[bl_idx] = images_by_G_block[bl_idx] * mask
@@ -468,16 +514,17 @@ class AugmentPipe(torch.nn.Module):
 def collect_im_by_block(input_images):
     ans = list()
     sh = input_images[-1].shape
+    print(sh)
     for i in range(len(input_images)):
-        ans.append( torch.nn.functional.interpolate(input_images[i], size=(sh[2], sh[3]), mode="bilinear", align_corners=False))
+        ans.append( torch.nn.functional.interpolate(input_images[i], size=(sh[2], sh[3], sh[4]), mode="trilinear", align_corners=False))
     return ans
 
 def collect_im_by_batch(images_by_G_block):
     ans = list()
     sh = images_by_G_block[-1].shape
     div = 1
-    ans.append( torch.nn.functional.interpolate(images_by_G_block[-1], size=(sh[2], sh[3]), mode="bilinear", align_corners=False) )
+    ans.append( torch.nn.functional.interpolate(images_by_G_block[-1], size=(sh[2], sh[3], sh[4]), mode="trilinear", align_corners=False) )
     for i in range(len(images_by_G_block)-1, 0, -1):
         div = div * 2
-        ans.append( torch.nn.functional.interpolate(images_by_G_block[i], size=(int(sh[2]/div), int(sh[3]/div)), mode="bilinear", align_corners=False) )
+        ans.append( torch.nn.functional.interpolate(images_by_G_block[i], size=(int(sh[2]/div), int(sh[3]/div), int(sh[4]/div)), mode="trilinear", align_corners=False) )
     return list(reversed(ans))

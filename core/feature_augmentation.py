@@ -14,7 +14,7 @@ class Content_FA(nn.Module):
 
     def mix(self, y):
         """
-        Randomly swap channels of different instances
+        Randomly swap channels of different instances随机交换不同实例的通道
         """
         bs = y.shape[0]
         ch = y.shape[1]
@@ -31,7 +31,7 @@ class Content_FA(nn.Module):
 
     def drop(self, y):
         """
-        Randomly zero out channels
+        Randomly zero out channels随机调零通道
         """
         ch = y.shape[1]
         ans = y
@@ -58,7 +58,7 @@ class Layout_FA(nn.Module):
     def __init__(self, no_mask, prob):
         super(Layout_FA, self).__init__()
         self.no_mask = no_mask
-        self.prob = prob
+        self.prob = prob  #为啥不是self.prob = prob_FA_lay？？
         self.ranges = (0.10, 0.30)
 
     def forward(self, y, masks):
@@ -70,7 +70,7 @@ class Layout_FA(nn.Module):
 
     def func_without_mask(self, y):
         """
-        If a segmentation mask is not provided, copy-paste rectangles in a random way
+        If a segmentation mask is not provided, copy-paste rectangles in a random way如果未提供分割遮罩，则以随机方式复制粘贴矩形
         """
         bs = y.shape[0]
         ans = y.clone()
@@ -84,6 +84,7 @@ class Layout_FA(nn.Module):
     def func_with_mask(self, y, mask):
         """
         If a segmentation mask is provided, ensure that the copied areas never cut semantic boundaries
+        如果提供了分割掩码，则确保复制区域从不切割语义边界。
         """
         ans_y = y.clone()
         ans_mask = mask.clone()
@@ -153,8 +154,8 @@ class Layout_FA(nn.Module):
             return y, mask
 
 
-# --- geometric helper functions --- #
-def gen_rectangle(ans, w=-1, h=-1):
+# --- geometric helper functions --- #几何辅助函数
+def gen_rectangle(ans, w=-1, h=-1):  #这里是不是加一个维度？
     x_c, y_c = random.random(), random.random()
     x_s, y_s = random.random()*0.4+0.1, random.random()*0.4+0.1
     x_l, x_r = x_c-x_s/2, x_c+x_s/2
@@ -169,7 +170,7 @@ def gen_rectangle(ans, w=-1, h=-1):
     return x1, x2, y1, y2
 
 
-def trim_rectangle(x1, x2, y1, y2, sh):
+def trim_rectangle(x1, x2, y1, y2, sh): #修剪矩形
     if x1 < 0:
         x2 += (0 - x1)
         x1 += (0 - x1)

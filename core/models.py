@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 import torch.nn.functional as F
-import torch.nn.utils.spectral_norm as sp_norm
+import torch.nn.utils.spectral_norm #as sp_norm
 import copy
 from .utils import to_rgb, from_rgb, to_decision, get_norm_by_name
 from .feature_augmentation import Content_FA, Layout_FA
@@ -18,7 +18,8 @@ def create_models(opt, recommended_config):
     # --- generator and EMA --- #
     netG = Generator(config_G).to(opt.device)
     netG.apply(weights_init)
-    netEMA = copy.deepcopy(netG) if not opt.no_EMA else None
+    netEMA = copy.deepcopy(netG) if not opt.no_EMA else None #copy.deepcopy()函数深复制
+    #netEMA=None
 
     # --- discriminator --- #
     if opt.phase == "train":
@@ -57,7 +58,7 @@ def prepare_config(opt, recommended_config):
     G_keys_user = ["ch_G", "norm_G", "noise_dim"]
     D_keys_user = ["ch_D", "norm_D", "prob_FA_con", "prob_FA_lay", "bernoulli_warmup"]
 
-    config_G = dict((k, recommended_config[k]) for k in G_keys_recommended)
+    config_G = dict((k, recommended_config[k]) for k in G_keys_recommended)###recommended_config是一个字典,将recommended_config这个字典中的包含G_keys_recommended的键值的键值对保存在config_G之中
     config_G.update(dict((k, getattr(opt, k)) for k in G_keys_user))
     config_D = dict((k, recommended_config[k]) for k in D_keys_recommended)
     config_D.update(dict((k, getattr(opt, k)) for k in D_keys_user))
@@ -99,12 +100,13 @@ class Generator(nn.Module):
         self.norm_name = config_G["norm_G"]
         self.no_masks = config_G["no_masks"]
         self.num_mask_channels = config_G["num_mask_channels"]
-        num_of_channels = get_channels("Generator", config_G["ch_G"])[-self.num_blocks-1:]
-
+        num_of_channels = get_channels("Generator", config_G["ch_G"])[-self.num_blocks-1:]# [-6:]取"Generator": [8, 8, 8, 8, 8, 8, 8, 4, 2, 1]的右边6个和ch_G数相乘
+        # print(num_of_channels)
+        # [256, 256, 256, 128, 64, 32]
         self.body, self.rgb_converters = nn.ModuleList([]), nn.ModuleList([])
-        self.first_linear = nn.ConvTranspose3d(self.noise_init_dim, num_of_channels[0], self.noise_shape)
+        self.first_linear = nn.ConvTranspose3d(self.noise_init_dim, num_of_channels[0], self.noise_shape)#nn.ConvTranspose3d(64,256,（5,5,5)），kernel_size=（5,5,5),out_put=(5,256,d,h,w)
         for i in range(self.num_blocks):
-            cur_block = G_block(num_of_channels[i], num_of_channels[i+1], self.norm_name, i==0)
+            cur_block = G_block(num_of_channels[i], num_of_channels[i+1], self.norm_name, i==0)#(256,256,None,i==0)
             cur_rgb   = to_rgb(num_of_channels[i+1])
             self.body.append(cur_block)
             self.rgb_converters.append(cur_rgb)
@@ -117,12 +119,13 @@ class Generator(nn.Module):
         ans_images = list()
         ans_feat = list()
         x = self.first_linear(z)
-        for i in range(self.num_blocks): # 循环5次
+        for i in range(self.num_blocks): #循环五次
             x = self.body[i](x)
             im = torch.tanh(self.rgb_converters[i](x))
             ans_images.append(im)
             ans_feat.append(torch.tanh(x))
         output["images"] = ans_images
+        #print(output["images"])
 
         if get_feat:
              output["features"] = ans_feat
@@ -132,17 +135,17 @@ class Generator(nn.Module):
 
 
 class G_block(nn.Module):
-    def __init__(self, in_channel, out_channel, norm_name, is_first):
+    def __init__(self, in_channel, out_channel, norm_name, is_first):#(256,256,None,i==0)
         super(G_block, self).__init__()
         middle_channel = min(in_channel, out_channel)
         self.ups = nn.Upsample(scale_factor=2) if not is_first else torch.nn.Identity()
         self.activ = nn.LeakyReLU(0.2)
-        # sp_norm 谱归一化，生成鉴别器
-        self.conv1 = sp_norm(nn.Conv3d(in_channel, middle_channel, (3, 3, 3), padding=1))
-        self.conv2 = sp_norm(nn.Conv3d(middle_channel, out_channel, (3, 3, 3), padding=1))
+        #self.conv1 = sp_norm(nn.Conv3d(in_channel, middle_channel ,(3,3,3), padding=1))
+        self.conv1 = torch.nn.utils.spectral_norm (nn.Conv3d(in_channel, middle_channel, (3, 3, 3), padding=1))
+        self.conv2 = torch.nn.utils.spectral_norm (nn.Conv3d(middle_channel, out_channel, (3,3,3), padding=1))
         self.norm1  = get_norm_by_name(norm_name, in_channel)
         self.norm2  = get_norm_by_name(norm_name, middle_channel)
-        self.conv_sc = sp_norm(nn.Conv3d(in_channel, out_channel, (1, 1, 1), bias=False))
+        self.conv_sc = torch.nn.utils.spectral_norm (nn.Conv3d(in_channel, out_channel, (1, 1, 1), bias=False))
 
     def forward(self, x):
         h = x
@@ -207,7 +210,7 @@ class Discriminator(nn.Module):
               (self.num_blocks_ll, self.num_blocks-self.num_blocks_ll, sum(p.numel() for p in self.parameters())))
 
     def content_masked_attention(self, y, mask, for_real, epoch):
-        mask = F.interpolate(mask, size=(y.shape[2], y.shape[3]), mode="nearest")
+        mask = F.interpolate(mask, size=(y.shape[2], y.shape[3]), mode="nearest") #!!
         y_ans = torch.zeros_like(y).repeat(mask.shape[1], 1, 1, 1)
         if not for_real:
             mask_soft = mask
@@ -264,14 +267,14 @@ class D_block(nn.Module):
         ker_size, padd_size = (1, 0) if only_content else (3, 1)
         self.is_first = is_first
         self.activ = nn.LeakyReLU(0.2)
-        self.conv1 = sp_norm(nn.Conv3d(in_channel, middle_channel, ker_size, padding=padd_size))
-        self.conv2 = sp_norm(nn.Conv3d(middle_channel, out_channel, ker_size, padding=padd_size))
+        self.conv1 = torch.nn.utils.spectral_norm (nn.Conv3d(in_channel, middle_channel, ker_size, padding=padd_size))
+        self.conv2 = torch.nn.utils.spectral_norm (nn.Conv3d(middle_channel, out_channel, ker_size, padding=padd_size))
         self.norm1 = get_norm_by_name(norm_name, in_channel)
         self.norm2 = get_norm_by_name(norm_name, middle_channel)
         self.down = nn.AvgPool3d(2) if not only_content else torch.nn.Identity()
         learned_sc = in_channel != out_channel or not only_content
         if learned_sc:
-            self.conv_sc = sp_norm(nn.Conv3d(in_channel, out_channel, (1, 1, 1), bias=False))
+            self.conv_sc = torch.nn.utils.spectral_norm (nn.Conv3d(in_channel, out_channel, (1, 1, 1), bias=False))
         else:
             self.conv_sc = torch.nn.Identity()
 

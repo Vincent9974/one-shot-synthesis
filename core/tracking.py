@@ -101,7 +101,7 @@ class losses_saver():
                 f.writelines([item, ",", ",".join(self.logits[item]), "\n"])
 
 
-class image_saver():
+class image_saver():#!!
     def __init__(self, folder_images, no_masks, phase, continue_epoch):
         self.folder_images = folder_images
         self.no_masks = no_masks
@@ -146,7 +146,7 @@ class network_saver():
             f.write(str(epoch))
 
 
-# --- palette to colorize the mask visualizations --- #
+# --- palette to colorize the mask visualizations --- #调色板，为遮罩可视化着色
 PALETTE = [0, 0, 0, 128, 0, 0, 0, 128, 0, 128, 128, 0, 0, 0, 128, 128, 0, 128, 0, 128, 128, 128, 128, 128, 64, 0, 0,
                 191, 0, 0, 64, 128, 0, 191, 128, 0, 64, 0, 128, 191, 0, 128, 64, 128, 128, 191, 128, 128, 0, 64, 0, 128,
                 64, 0, 0, 191, 0, 128, 191, 0, 0, 64, 128, 128, 64, 128, 22, 22, 22, 23, 23, 23, 24, 24, 24, 25, 25, 25,

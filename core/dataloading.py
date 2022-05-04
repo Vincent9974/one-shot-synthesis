@@ -10,8 +10,8 @@ from .recommended_config import get_recommended_config
 
 def prepare_dataloading(opt):
     dataset = Dataset(opt)
-    recommended_config = {"image resolution": dataset.image_resolution,# (80,80,80)
-                          "noise_shape": dataset.recommended_config[0],# (5, 5, 5)
+    recommended_config = {"image resolution": dataset.image_resolution,#（80，80，80）
+                          "noise_shape": dataset.recommended_config[0], #（5，5，5）
                           "num_blocks_g":  dataset.recommended_config[1],#5
                           "num_blocks_d":  dataset.recommended_config[2],#6
                           "num_blocks_d0": dataset.recommended_config[3],#2
@@ -22,7 +22,8 @@ def prepare_dataloading(opt):
     else:
         opt.no_masks = True
         print("Using the training regime *without* segmentation masks")
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size = opt.batch_size, shuffle = True, num_workers=8)
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size = opt.batch_size, shuffle = True, num_workers=8)#PyTorch已有的数据读取接口的输入按照batch size封装成Tensor
+    #dataloader = torch.utils.data.DataLoader(dataset, shuffle=True, num_workers=8)
     return dataloader, recommended_config
 
 
@@ -34,10 +35,14 @@ class Dataset(torch.utils.data.Dataset):
         self.device = opt.device
         # --- images --- #
         self.root_images = os.path.join(opt.dataroot, opt.dataset_name, "image")
-        self.root_masks = os.path.join(opt.dataroot, opt.dataset_name, "mask")
+        self.root_masks = os.path.join(opt.dataroot, opt.dataset_name, "mask")#没有，所以没用
+        #print(self.get_frames_list(self.root_images))
         self.list_imgs = self.get_frames_list(self.root_images)
+        #print(self.list_imgs)
         assert len(self.list_imgs) > 0, "Found no images"
         self.image_resolution, self.recommended_config = get_recommended_config(self.get_im_resolution(opt.max_size))
+        #print(self.image_resolution)
+        #print(self.recommended_config)
 
         # --- masks --- #
         if os.path.isdir(self.root_masks) and not opt.no_masks:
@@ -62,10 +67,13 @@ class Dataset(torch.utils.data.Dataset):
         res_list = list()
         for cur_img in self.list_imgs:
             #img_pil = Image.open(os.path.join(self.root_images, cur_img)).convert("RGB")
+            #img_pil = Image.open(os.path.join(self.root_images, cur_img))
             img_pil = tifffile.imread(os.path.join(self.root_images, cur_img))
-            #print(img_pil.shape) /(80, 80, 80)
+            #print(img_pil.shape)
+            #res_list.append(img_pil.size)
             res_list.append(img_pil.shape)
-        all_res_equal = len(set(res_list)) <= 1
+            #print(res_list)
+        all_res_equal = len(set(res_list)) <= 1  #set将重复值的单个副本存储到其中
         if all_res_equal:
             size_1, size_2, size_3 = res_list[0]  # all images have same resolution -> using original resolution
         else:
@@ -86,7 +94,7 @@ class Dataset(torch.utils.data.Dataset):
             size_1, size_2, size_3 = size_1 / (size_3 / max_size), size_2 / (size_3 / max_size), max_size
         return int(size_1), int(size_2), int(size_3)
 
-    # def get_num_mask_channels(self):
+    # def get_num_mask_channels(self): #没用
     #     """
     #     Iterate over all masks to determine how many classes are there
     #     """
@@ -102,7 +110,7 @@ class Dataset(torch.utils.data.Dataset):
     #             max_index = cur_max + 1 if max_index < cur_max + 1 else max_index
     #     return int(max_index)
 
-    # def create_mask_channels(self, mask):
+    # def create_mask_channels(self, mask): #没用
     #     """
     #     Convert a mask to one-hot representation
     #     """
@@ -113,30 +121,56 @@ class Dataset(torch.utils.data.Dataset):
     #     else:
     #         # --- multiple semantic objects --- #
     #         integers = torch.round(mask * 256)
-    #         mask = torch.nn.functional.one_hot(integers.long(), num_classes=self.num_mask_channels)
+    #         mask = torch.nn.functional.one_hot(integers.long(), num_classes=self.num_mask_channels) #self.num_mask_channels=0
     #         mask = mask.float()[0].permute(2, 0, 1)
     #         return mask
 
     def __getitem__(self, index):
         output = dict()
         idx = index % len(self.list_imgs)
+        #print(index)
+        #print(idx)
         target_size = self.image_resolution
+        #print(target_size)
 
         # --- image ---#
-        # img_pil = Image.open(os.path.join(self.root_images, self.list_imgs[idx])).convert("RGB")
-        # img = F.to_tensor(F.resize(img_pil, size=target_size))
-        # img = (img - 0.5) * 2
-        # output["images"] = img
-        img_pil = tifffile.imread(os.path.join(self.root_images, self.list_imgs[idx]))
-        img = torch.from_numpy(img_pil)
-        img = img.unsqueeze(0)  # 增加一个维度torch.size([1,80,80,80])
-        img = img.expand(3, 80, 80, 80)  # 对shape为1的进行扩展，对shape不为1的只能保持不变
-        # print(img)
+        #img_pil = Image.open(os.path.join(self.root_images, self.list_imgs[idx])).convert("RGB")
 
-        img = (img / 255 - 0.5) * 2
-        # print(img)
-        output["images"] = img  # output是个字典，key:"images",value:img(这里的img是张量)
+
+        img_pil = tifffile.imread(os.path.join(self.root_images, self.list_imgs[idx]))
+        #img_pil=img_pil.transform.ToPILImage()
+       # print(img_pil)
+       # img = F.to_tensor(F.resize(img_pil, size=target_size))
+        #print(img_pil)
+        #print(img_pil.shape)
+
+        # x = img_pil[:, :, :,:, None]  # ！!多：
+        # print(x)
+        # x = x.transpose((4, 3, 0, 1, 2)) / 255
+        # x = torch.from_numpy(x)
+        # x = x.to(torch.device('cuda'))
+        # x=x.type(torch.cuda.FloatTensor)
+        # x = (x - 0.5) * 2
+        # x=x.clamp(-1, 1)
+        # x = x[:, 0:3, :, :, :]
+
+        # print(img_pil)
+        # print(img_pil.shape)
+        # print(img_pil.size)
+        #img = F.to_tensor(F.resize(img_pil, size=target_size))
+        #img = torch.from_numpy(torch.resize(img_pil, size=target_size))
+        img = torch.from_numpy(img_pil)
+        img = img.unsqueeze(0)  #增加一个维度torch.size([1,80,80,80])
+        img = img.expand(3,80,80,80)  #对shape为1的进行扩展，对shape不为1的只能保持不变
+        #print(img)
+        #img = img.unsqueeze(0)
+        #print(img.shape)
+        #print(img)
+        img = (img/255 - 0.5) * 2
+        #print(img)
+        output["images"] = img #output是个字典，key:"images",value:img(这里的img是张量)
         # print(output["images"])
+        # print(output["images"].shape)
 
         # --- mask ---#
         if not self.no_masks:
