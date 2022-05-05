@@ -56,7 +56,7 @@ def translate2d(tx, ty, **kwargs):
         [0, 0, 1],
         **kwargs)
 
-def translate3d(tx, ty, tz, **kwargs):
+def translate3d(tx, ty, tz, **kwargs):#平移
     return matrix(
         [1, 0, 0, tx],
         [0, 1, 0, ty],
@@ -71,7 +71,7 @@ def scale2d(sx, sy, **kwargs):
         [0,  0,  1],
         **kwargs)
 
-def scale3d(sx, sy, sz, **kwargs):
+def scale3d(sx, sy, sz, **kwargs): # 放缩
     return matrix(
         [sx, 0,  0,  0],
         [0,  sy, 0,  0],
@@ -86,22 +86,12 @@ def rotate2d(theta, **kwargs):
         [0,                0,                 1],
         **kwargs)
 
-def rotate3d(v, theta, **kwargs):
-    #vx = v[..., 0]; vy = v[..., 1]; vz = v[..., 2]
-    vx = v[..., 0]; vy = v[..., 1]; vz = v[...,2]
-    #print(v.shape)
-    #print(vx)
-    #print(vy.shape)
-    #print(vz.shape) #tensor([-0.0000, -0.0000, -0.0490, -0.0000, -0.0000], device='cuda:0')
-    #print(theta.shape)[5,3,80,80]
-    s = torch.sin(theta); c = torch.cos(theta); cc = 1 - c #torch.Size([5])
-    # print(s.shape)
-    #print(c)
-    #print(cc)
-    d=vx * vx*cc+c #张量A和B在广播过程中，对应维度不匹配
-    #print(d.shape)[5,3,80,80]
+def rotate3d(v, theta, **kwargs): # 旋转,v是基向量，单位向量，theta为偏转角
+    vx = 1; vy = 0; vz = 0 #绕x轴旋转
+    s = torch.sin(theta); c = torch.cos(theta); cc = 1 - c
+    d = vx * vx*cc+c
     return matrix(
-        [vx*vx*cc+c,    vx*vy*cc-vz*s, vx*vz*cc+vy*s, 0], #两个相同大小的矩阵才能使用*
+        [vx*vx*cc+c,    vx*vy*cc-vz*s, vx*vz*cc+vy*s, 0],
         [vy*vx*cc+vz*s, vy*vy*cc+c,    vy*vz*cc-vx*s, 0],
         [vz*vx*cc-vy*s, vz*vy*cc+vx*s, vz*vz*cc+c,    0],
         [0,             0,             0,             1],
@@ -245,7 +235,7 @@ class AugmentPipe(torch.nn.Module):
             if debug_percentile is not None:
                 i = torch.full_like(i, torch.floor(debug_percentile * 2))
             #G_inv = G_inv @ scale3d_inv(1 - 2 * i, 1)
-            G_inv = G_inv @ scale3d_inv(1 - 2 * i,1 - 2 * i,1)  #@:矩阵乘法
+            G_inv = G_inv @ scale3d_inv(1 - 2 * i, 1 - 2 * i, 1 - 2 * i)  #@:矩阵乘法
 
         # Apply 90 degree rotations with probability (rotate90 * strength).以概率旋转90度（旋转90度*强度）。
         if self.rotate90 > 0:
@@ -254,8 +244,9 @@ class AugmentPipe(torch.nn.Module):
             if debug_percentile is not None:
                 i = torch.full_like(i, torch.floor(debug_percentile * 4))
             #G_inv = G_inv @ rotate3d_inv(-np.pi / 2 * i)
-            print(-np.pi / 2 * i)
-            G_inv = G_inv @ rotate3d_inv(image_high_res,-np.pi / 2 * i)
+            #print(-np.pi / 2 * i)
+            v = torch.tensor(1, 1, 1) #基向量
+            G_inv = G_inv @ rotate3d_inv(v, -np.pi / 2 * i)
 
         # Apply integer translation with probability (xint * strength).
         if self.xint > 0:
