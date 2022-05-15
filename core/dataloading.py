@@ -22,7 +22,7 @@ def prepare_dataloading(opt):
     else:
         opt.no_masks = True
         print("Using the training regime *without* segmentation masks")
-    dataloader = torch.utils.data.DataLoader(dataset, batch_size = opt.batch_size, shuffle = True, num_workers=8)#PyTorch已有的数据读取接口的输入按照batch size封装成Tensor
+    dataloader = torch.utils.data.DataLoader(dataset, batch_size = opt.batch_size, shuffle = True, num_workers=2)#PyTorch已有的数据读取接口的输入按照batch size封装成Tensor
     #dataloader = torch.utils.data.DataLoader(dataset, shuffle=True, num_workers=8)
     return dataloader, recommended_config
 
@@ -41,8 +41,8 @@ class Dataset(torch.utils.data.Dataset):
         #print(self.list_imgs)
         assert len(self.list_imgs) > 0, "Found no images"
         self.image_resolution, self.recommended_config = get_recommended_config(self.get_im_resolution(opt.max_size))
-        #print(self.image_resolution)
-        #print(self.recommended_config)
+        # print(self.image_resolution)
+        # print(self.recommended_config)
 
         # --- masks --- #
         if os.path.isdir(self.root_masks) and not opt.no_masks:
@@ -69,7 +69,7 @@ class Dataset(torch.utils.data.Dataset):
             #img_pil = Image.open(os.path.join(self.root_images, cur_img)).convert("RGB")
             #img_pil = Image.open(os.path.join(self.root_images, cur_img))
             img_pil = tifffile.imread(os.path.join(self.root_images, cur_img))
-            #print(img_pil.shape)
+            print(img_pil.shape)
             #res_list.append(img_pil.size)
             res_list.append(img_pil.shape)
             #print(res_list)
@@ -161,7 +161,7 @@ class Dataset(torch.utils.data.Dataset):
         #img = torch.from_numpy(torch.resize(img_pil, size=target_size))
         img = torch.from_numpy(img_pil)
         img = img.unsqueeze(0)  #增加一个维度torch.size([1,80,80,80])
-        img = img.expand(3,80,80,80)  #对shape为1的进行扩展，对shape不为1的只能保持不变
+        img = img.expand(3,16,16,16)  #对shape为1的进行扩展，对shape不为1的只能保持不变
         #print(img)
         #img = img.unsqueeze(0)
         #print(img.shape)

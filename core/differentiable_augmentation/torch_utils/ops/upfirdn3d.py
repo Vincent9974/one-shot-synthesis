@@ -36,31 +36,45 @@ def _init():
 
 def _parse_scaling(scaling):
     if isinstance(scaling, int):
-        scaling = [scaling, scaling]
+        scaling = [scaling, scaling, scaling]
     assert isinstance(scaling, (list, tuple))
     assert all(isinstance(x, int) for x in scaling)
-    sx, sy ,sz= scaling
+    sx, sy ,sz = scaling
     assert sx >= 1 and sy >= 1  and sz >= 1
-    return sx, sy,sz
+    return sx, sy, sz
 
 def _parse_padding(padding):
+    #print(padding)
     if isinstance(padding, int):
-        padding = [padding, padding]
+        #print("padding is (int)")
+        padding = [padding, padding, padding, padding, padding, padding]
     assert isinstance(padding, (list, tuple))
     assert all(isinstance(x, int) for x in padding)
-    #if len(padding) == 2:
     if len(padding) == 3:
-        padx, pady , padz= padding
+        padx, pady , padz = padding
         padding = [padx, padx, pady, pady, padz, padz]
+        #print(padding)
+    if len(padding) == 4:
+        padx, pady , padz = padding[:3]
+        padding = [padx, padx, pady, pady, padz, padz]
+        #print(padding)
+    #print(padding)
     padx0, padx1, pady0, pady1, padz0, padz1 = padding
     return padx0, padx1, pady0, pady1, padz0, padz1
 
 def _get_filter_size(f):
+    #print(f.shape)#12
+    #print("f.shape:")
+    #print(f.shape[-1])#12
+    #print(f.shape[1])none
+    #print(f.shape[0])12
+    #print("f.ndim:")
+    #print(f.ndim)
     if f is None:
         return 1, 1, 1
-    assert isinstance(f, torch.Tensor) and f.ndim in [1, 2]
+    assert isinstance(f, torch.Tensor) and f.ndim in [1, 2, 3]
     fw = f.shape[-1]
-    fh = f.shape[1]
+    fh = f.shape[0]
     fd = f.shape[0]
     with misc.suppress_tracer_warnings():
         fw = int(fw)
@@ -68,7 +82,7 @@ def _get_filter_size(f):
         fd = int(fd)
     misc.assert_shape(f, [fd, fh, fw][:f.ndim])
     assert fw >= 1 and fh >= 1 and fd >= 1
-    return fw, fh, fd
+    return fd, fw, fh,
 
 #----------------------------------------------------------------------------
 
@@ -108,14 +122,16 @@ def setup_filter(f, device=torch.device('cpu'), normalize=True, flip_filter=Fals
     if f.ndim == 1 and not separable:
         f = f.ger(f)
     assert f.ndim == (1 if separable else 2)
-
     # Apply normalize, flip, gain, and device.
     if normalize:
         f /= f.sum()
     if flip_filter:
         f = f.flip(list(range(f.ndim)))
+
     f = f * (gain ** (f.ndim / 2))
     f = f.to(device=device)
+    #print("f:")
+    #print(f)
     return f
 
 #----------------------------------------------------------------------------
@@ -163,6 +179,7 @@ def upfirdn3d(x, f, up=1, down=1, padding=0, flip_filter=False, gain=1, impl='cu
     assert isinstance(x, torch.Tensor)
     assert impl in ['ref', 'cuda']
     if impl == 'cuda' and x.device.type == 'cuda' and _init():
+        print("impl == 'cuda' and x.device.type == 'cuda' and _init()")
         return _upfirdn3d_cuda(up=up, down=down, padding=padding, flip_filter=flip_filter, gain=gain).apply(x, f)
     return _upfirdn3d_ref(x, f, up=up, down=down, padding=padding, flip_filter=flip_filter, gain=gain)
 
@@ -173,42 +190,69 @@ def _upfirdn3d_ref(x, f, up=1, down=1, padding=0, flip_filter=False, gain=1):
     """Slow reference implementation of `upfirdn3d()` using standard PyTorch ops.
     """
     # Validate arguments.
-    assert isinstance(x, torch.Tensor) and x.ndim == 4
+    assert isinstance(x, torch.Tensor) and x.ndim == 5
     if f is None:
         f = torch.ones([1, 1], dtype=torch.float32, device=x.device)
     assert isinstance(f, torch.Tensor) and f.ndim in [1, 2]
     assert f.dtype == torch.float32 and not f.requires_grad
-    batch_size, num_channels,in_depth, in_height, in_width = x.shape
+    # print("x.shape")
+    # print(x.shape) #[5,3,34,36,31]
+    batch_size, num_channels, in_depth, in_height, in_width = x.shape
     upx, upy, upz = _parse_scaling(up)
     downx, downy, downz = _parse_scaling(down)
     #padx0, padx1, pady0, pady1 = _parse_padding(padding)
     padx0, padx1, pady0, pady1,padz0, padz1 = _parse_padding(padding)
 
-    # Upsample by inserting zeros.
+    # Upsample by inserting zeros. 插值
     x = x.reshape([batch_size, num_channels, in_depth, 1, in_height, 1, in_width, 1])
-    x = torch.nn.functional.pad(x, [0, upx - 1, 0, 0, 0, upy - 1])
+    #print(in_depth,in_height,in_width)
+    # print("x:")
+    # print(x.shape) 【5，3，44，1，44，1，44，1】
+    # print(upx-1,upy-1,upz-1)
+    x = torch.nn.functional.pad(x, [0, upx - 1, 0, 0, 0, upy - 1, 0, 0, 0, upz-1])
+    # print(x.shape)
     x = x.reshape([batch_size, num_channels,in_depth * upz, in_height * upy, in_width * upx])
+    # print(x.shape) [5,3,44,44,44]
 
     # Pad or crop.
     x = torch.nn.functional.pad(x, [max(padx0, 0), max(padx1, 0), max(pady0, 0), max(pady1, 0), max(padz0, 0), max(padz1, 0)])
-    x = x[:, :, max(-pady0, 0) : x.shape[2] - max(-pady1, 0), max(-padx0, 0) : x.shape[3] - max(-padx1, 0)]
+    x = x[:, :, max(-pady0, 0): x.shape[2] - max(-pady1, 0), max(-padx0, 0) : x.shape[3] - max(-padx1, 0), max(-padz0, 0): x.shape[4] - max(-padz1, 0)]
+    #print("x.shape")
+    #print(x.shape)
 
     # Setup filter.
+    # print(f)
     f = f * (gain ** (f.ndim / 2))
+    # print(f)
+    # print(f)
     f = f.to(x.dtype)
     if not flip_filter:
         f = f.flip(list(range(f.ndim)))
-
+    # print(f)
     # Convolve with the filter.
+    # print(f.ndim)
+    # print(f[np.newaxis, np.newaxis, np.newaxis].shape)
     f = f[np.newaxis, np.newaxis].repeat([num_channels, 1] + [1] * f.ndim)
-    if f.ndim == 4:
+    # print(f.unsqueeze(2).shape)
+    # print(f.unsqueeze(3).shape)
+    # print(f.ndim)
+    if f.ndim == 5:
         x = conv3d_gradfix.conv3d(input=x, weight=f, groups=num_channels)
     else:
-        x = conv3d_gradfix.conv3d(input=x, weight=f.unsqueeze(2), groups=num_channels)
-        x = conv3d_gradfix.conv3d(input=x, weight=f.unsqueeze(3), groups=num_channels)
+        # print(f.shape)
+        x = conv3d_gradfix.conv3d(input=x, weight=f.unsqueeze(2).unsqueeze(3), groups=num_channels)
+        x = conv3d_gradfix.conv3d(input=x, weight=f.unsqueeze(2).unsqueeze(4), groups=num_channels)
+        x = conv3d_gradfix.conv3d(input=x, weight=f.unsqueeze(3).unsqueeze(4), groups=num_channels)
 
+    # print(x.shape)
     # Downsample by throwing away pixels.
-    x = x[:, :, ::downy, ::downx]
+    # print("downz")
+    # print(downz)
+    x = x[:, :, ::downz, ::downy, ::downx]
+    # print(x.shape)
+    # x = x[:, :, :16, :16, :16]
+    # print('x.shape')
+    # print(x.shape)
     return x
 
 #----------------------------------------------------------------------------
@@ -219,12 +263,12 @@ def _upfirdn3d_cuda(up=1, down=1, padding=0, flip_filter=False, gain=1):
     """Fast CUDA implementation of `upfirdn3d()` using custom ops.
     """
     # Parse arguments.
-    upx, upy = _parse_scaling(up)
+    upx, upy, upz = _parse_scaling(up)
     downx, downy = _parse_scaling(down)
     padx0, padx1, pady0, pady1 = _parse_padding(padding)
 
     # Lookup from cache.
-    key = (upx, upy, downx, downy, padx0, padx1, pady0, pady1, flip_filter, gain)
+    key = (upx, upy, upz, downx, downy, padx0, padx1, pady0, pady1, flip_filter, gain)
     if key in _upfirdn3d_cuda_cache:
         return _upfirdn3d_cuda_cache[key]
 
@@ -310,6 +354,7 @@ def filter3d(x, f, padding=0, flip_filter=False, gain=1, impl='cuda'):
 #----------------------------------------------------------------------------
 
 def upsample3d(x, f, up=2, padding=0, flip_filter=False, gain=1, impl='cuda'):
+    print(len(x))
     r"""Upsample a batch of 3d images using the given 3d FIR filter.
 
     By default, the result is padded so that its shape is a multiple of the input.
@@ -331,20 +376,22 @@ def upsample3d(x, f, up=2, padding=0, flip_filter=False, gain=1, impl='cuda'):
         flip_filter: False = convolution, True = correlation (default: False).
         gain:        Overall scaling factor for signal magnitude (default: 1).
         impl:        Implementation to use. Can be `'ref'` or `'cuda'` (default: `'cuda'`).
-
     Returns:
         Tensor of the shape `[batch_size, num_channels, out_height, out_width]`.
     """
-    upx, upy = _parse_scaling(up)
-    padx0, padx1, pady0, pady1 = _parse_padding(padding)
-    fw, fh = _get_filter_size(f)
+    upx, upy, upz = _parse_scaling(up)
+    padx0, padx1, pady0, pady1, padz0, padz1 = _parse_padding(padding)
+
+    fw, fh, fd= _get_filter_size(f)
     p = [
         padx0 + (fw + upx - 1) // 2,
         padx1 + (fw - upx) // 2,
         pady0 + (fh + upy - 1) // 2,
         pady1 + (fh - upy) // 2,
+        padz0 + (fd + upz - 1) // 2,
+        padz1 + (fd - upz) // 2,
     ]
-    return upfirdn3d(x, f, up=up, padding=p, flip_filter=flip_filter, gain=gain*upx*upy, impl=impl)
+    return upfirdn3d(x, f, up=up, padding=p, flip_filter=flip_filter, gain=gain*upx*upy*upz, impl=impl)
 
 #----------------------------------------------------------------------------
 
@@ -372,16 +419,19 @@ def downsample3d(x, f, down=2, padding=0, flip_filter=False, gain=1, impl='cuda'
         impl:        Implementation to use. Can be `'ref'` or `'cuda'` (default: `'cuda'`).
 
     Returns:
-        Tensor of the shape `[batch_size, num_channels, out_height, out_width]`.
+        Tensor of the shape `[batch_size, num_channels,out_depth, out_height, out_width]`.
     """
-    downx, downy = _parse_scaling(down)
-    padx0, padx1, pady0, pady1 = _parse_padding(padding)
-    fw, fh = _get_filter_size(f)
+    downx, downy, downz = _parse_scaling(down)
+    padx0, padx1, pady0, pady1, padz0, padz1 = _parse_padding(padding)
+    fd, fw, fh = _get_filter_size(f)
     p = [
         padx0 + (fw - downx + 1) // 2,
         padx1 + (fw - downx) // 2,
         pady0 + (fh - downy + 1) // 2,
         pady1 + (fh - downy) // 2,
+        padz0 + (fd - downz + 1) // 2,
+        padz1 + (fd - downz) // 2,
+
     ]
     return upfirdn3d(x, f, down=down, padding=p, flip_filter=flip_filter, gain=gain, impl=impl)
 

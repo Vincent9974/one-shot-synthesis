@@ -34,6 +34,7 @@ def no_weight_gradients():
 
 def conv3d(input, weight, bias=None, stride=1, padding=0, dilation=1, groups=1):
     if _should_use_custom_op(input):
+        # print("-------------------------")
         return _conv3d_gradfix(transpose=False, weight_shape=weight.shape, stride=stride, padding=padding, output_padding=0, dilation=dilation, groups=groups).apply(input, weight, bias)
     return torch.nn.functional.conv3d(input=input, weight=weight, bias=bias, stride=stride, padding=padding, dilation=dilation, groups=groups)
 
@@ -67,7 +68,7 @@ _conv3d_gradfix_cache = dict()
 
 def _conv3d_gradfix(transpose, weight_shape, stride, padding, output_padding, dilation, groups):
     # Parse arguments.
-    ndim = 2
+    ndim = 3
     weight_shape = tuple(weight_shape)
     stride = _tuple_of_ints(stride, ndim)
     padding = _tuple_of_ints(padding, ndim)
@@ -81,7 +82,7 @@ def _conv3d_gradfix(transpose, weight_shape, stride, padding, output_padding, di
 
     # Validate arguments.
     assert groups >= 1
-    assert len(weight_shape) == ndim + 2
+    assert len(weight_shape) == ndim + 3
     assert all(stride[i] >= 1 for i in range(ndim))
     assert all(padding[i] >= 0 for i in range(ndim))
     assert all(dilation[i] >= 0 for i in range(ndim))

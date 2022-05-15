@@ -25,9 +25,10 @@ enabled = False  # Enable the custom op by setting this to true.
 #----------------------------------------------------------------------------
 
 def grid_sample(input, grid):
+    # print(input.ndim) 5
     if _should_use_custom_op():
         return _GridSample3dForward.apply(input, grid)
-    return torch.nn.functional.grid_sample(input=input, grid=grid, mode='Trilinear', padding_mode='zeros', align_corners=False)
+    return torch.nn.functional.grid_sample(input=input, grid=grid, mode='nearest', padding_mode='zeros', align_corners=False)
 
 #----------------------------------------------------------------------------
 

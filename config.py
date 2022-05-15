@@ -24,13 +24,13 @@ def get_arguments():
     parser = argparse.ArgumentParser()
 
     # basics:
-    parser.add_argument('--exp_name', help='experiment name for trained folder', default='shayan_3d') # exp_name
+    parser.add_argument('--exp_name', help='experiment name for trained folder', default='shayan_16') # exp_name
     parser.add_argument('--cpu', action='store_true', help='run on cpu')
     parser.add_argument('--dataroot', help='location of datasets', default='datasets/')
     parser.add_argument('--checkpoints_dir', help='location of experiments', default='checkpoints/')
-    parser.add_argument('--dataset_name', help='dataset name', default='shayan_3d') # dataset
-    parser.add_argument('--num_epochs', type=int, default=10000, help='number of epochs') # 迭代
-    parser.add_argument('--max_size', type=int, help='limit image size in max dimension', default= 80) # 图片的maxsize
+    parser.add_argument('--dataset_name', help='dataset name', default='shayan_16') # dataset
+    parser.add_argument('--num_epochs', type=int, default=1000, help='number of epochs') # 迭代,iter
+    parser.add_argument('--max_size', type=int, help='limit image size in max dimension', default=16) # 图片的maxsize
     parser.add_argument('--continue_train', action="store_true", help='continue training of a previous checkpoint?')
     parser.add_argument('--which_epoch', type=int, help='which epoch to use for evaluation')
     parser.add_argument('--num_generated', type=int, default=100, help='which epoch to use for evaluation')
